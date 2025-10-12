@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'home_screen.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -11,225 +11,189 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> {
-  final emailController = TextEditingController();
-  final passController = TextEditingController();
-  bool isLogin = true;
-  bool loading = false;
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
 
-  Future<void> handleAuth() async {
-    setState(() => loading = true);
+  bool _isLoginMode = true;
+  bool _loading = false;
+
+  Future<void> _signInWithGoogle() async {
     try {
-      if (isLogin) {
+      setState(() => _loading = true);
+
+      final GoogleSignInAccount? gUser = await GoogleSignIn().signIn();
+      if (gUser == null) {
+        setState(() => _loading = false);
+        return;
+      }
+
+      final GoogleSignInAuthentication gAuth = await gUser.authentication;
+
+      final credential = GoogleAuthProvider.credential(
+        accessToken: gAuth.accessToken,
+        idToken: gAuth.idToken,
+      );
+
+      final userCred =
+          await FirebaseAuth.instance.signInWithCredential(credential);
+
+      final name = userCred.user?.displayName ?? 'Player';
+
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => HomeScreen(userName: name),
+        ),
+      );
+    } catch (e) {
+      debugPrint('Google sign-in error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Google sign-in failed: $e')),
+      );
+    } finally {
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _submit() async {
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty || password.isEmpty) return;
+    setState(() => _loading = true);
+
+    try {
+      if (_isLoginMode) {
         await FirebaseAuth.instance.signInWithEmailAndPassword(
-          email: emailController.text.trim(),
-          password: passController.text.trim(),
+          email: email,
+          password: password,
         );
       } else {
         await FirebaseAuth.instance.createUserWithEmailAndPassword(
-          email: emailController.text.trim(),
-          password: passController.text.trim(),
+          email: email,
+          password: password,
         );
       }
+
+      if (!mounted) return;
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) =>
+              HomeScreen(userName: name.isNotEmpty ? name : email), 
+        ),
+      );
     } on FirebaseAuthException catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.message ?? 'Authentication failed')),
       );
     } finally {
-      setState(() => loading = false);
-    }
-  }
-
-  Future<void> signInWithGoogle() async {
-    setState(() => loading = true);
-    try {
-      if (kIsWeb) {
-        final GoogleAuthProvider provider = GoogleAuthProvider();
-        await FirebaseAuth.instance.signInWithPopup(provider);
-      } else {
-        final GoogleSignIn googleSignIn = GoogleSignIn();
-        final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
-        if (googleUser == null) return;
-
-        final GoogleSignInAuthentication googleAuth =
-            await googleUser.authentication;
-
-        final credential = GoogleAuthProvider.credential(
-          accessToken: googleAuth.accessToken,
-          idToken: googleAuth.idToken,
-        );
-
-        await FirebaseAuth.instance.signInWithCredential(credential);
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Google Sign-In failed: $e')),
-      );
-    } finally {
-      setState(() => loading = false);
+      setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final grey = Colors.grey.shade900;
-    final lightGrey = Colors.grey.shade200;
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-
     return Scaffold(
-      backgroundColor: isDark ? grey : Colors.grey.shade100,
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Container(
-            width: 400,
-            padding: const EdgeInsets.all(32),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.grey : Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black,
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
+      body: Stack(
+        children: [
+          SizedBox.expand(
+            child: Image.asset(
+              'assets/images/background.jpg',
+              fit: BoxFit.cover,
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  isLogin ? 'Welcome Back' : 'Create Account',
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.white : Colors.grey.shade800,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  isLogin
-                      ? 'Login to continue your journey'
-                      : 'Join us and get started',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.grey.shade500,
-                  ),
-                ),
-                const SizedBox(height: 32),
-
-                TextField(
-                  controller: emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-                  decoration: InputDecoration(
-                    labelText: 'Email',
-                    filled: true,
-                    fillColor: isDark ? Colors.grey.shade800 : lightGrey,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-              
-                TextField(
-                  controller: passController,
-                  obscureText: true,
-                  style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-                  decoration: InputDecoration(
-                    labelText: 'Password',
-                    filled: true,
-                    fillColor: isDark ? Colors.grey.shade800 : lightGrey,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 28),
-
-               
-                loading
-                    ? const CircularProgressIndicator()
-                    : SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton(
-                          onPressed: handleAuth,
+          ),
+          Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(20),
+              child: Card(
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+                elevation: 6,
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _isLoginMode ? 'Hey, Let\'s Play' : 'Register / Enter Name',
+                        style: const TextStyle(
+                            fontSize: 22, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 20),
+                      if (!_isLoginMode)
+                        TextField(
+                          controller: _nameController,
+                          decoration:
+                              const InputDecoration(labelText: 'Enter your name'),
+                        ),
+                      TextField(
+                        controller: _emailController,
+                        decoration: const InputDecoration(labelText: 'Email Address'),
+                      ),
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _passwordController,
+                        obscureText: true,
+                        decoration: const InputDecoration(labelText: 'Password'),
+                      ),
+                      const SizedBox(height: 20),
+                      if (_loading)
+                        const CircularProgressIndicator()
+                      else ...[
+                        ElevatedButton(
+                          onPressed: _submit,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                                isDark ? Colors.grey.shade700 : Colors.grey.shade800,
+                            backgroundColor: Colors.deepPurple,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 16, horizontal: 60),
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
+                              borderRadius: BorderRadius.circular(30),
                             ),
                           ),
-                          child: Text(
-                            isLogin ? 'Login' : 'Sign Up',
-                            style: const TextStyle(
-                              fontSize: 18,
-                              color: Colors.white,
+                          child: Text(_isLoginMode ? 'Login' : 'Register'),
+                        ),
+                        const SizedBox(height: 10),
+                        ElevatedButton.icon(
+                          onPressed: _signInWithGoogle,
+                          icon: const Icon(Icons.login),
+                          label: const Text('Continue with Google'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: Colors.black87,
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 14, horizontal: 40),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(30),
+                              side: const BorderSide(color: Colors.grey),
                             ),
                           ),
                         ),
+                      ],
+                      const SizedBox(height: 10),
+                      TextButton(
+                        onPressed: () {
+                          setState(() {
+                            _isLoginMode = !_isLoginMode;
+                          });
+                        },
+                        child: Text(
+                          _isLoginMode
+                              ? 'Register'
+                              : 'Login with Email Instead',
+                        ),
                       ),
-
-                const SizedBox(height: 16),
-                TextButton(
-                  onPressed: () => setState(() => isLogin = !isLogin),
-                  child: Text(
-                    isLogin
-                        ? 'Create a new account'
-                        : 'Already have an account? Login',
-                    style: TextStyle(color: Colors.grey.shade500),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 24),
-
-                
-                Row(
-                  children: [
-                    Expanded(
-                      child: Divider(color: Colors.grey.shade400, thickness: 0.5),
-                    ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8.0),
-                      child: Text("or"),
-                    ),
-                    Expanded(
-                      child: Divider(color: Colors.grey.shade400, thickness: 0.5),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 24),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: OutlinedButton.icon(
-                    onPressed: signInWithGoogle,
-                    icon: Image.network(
-                      'https://upload.wikimedia.org/wikipedia/commons/4/4e/Gmail_Icon.png',
-                      height: 20,
-                    ),
-                    label: const Text(
-                      'Sign in with Google',
-                      style: TextStyle(fontSize: 16, color: Colors.black87),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      side: BorderSide(color: Colors.grey.shade300),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
-        ),
+        ],
       ),
     );
   }
